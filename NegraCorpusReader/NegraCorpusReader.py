@@ -3,6 +3,7 @@
 # URL: <http://www.experimentallabor.de/>
 #
 # Copyright 2011 Philipp Nolte
+# Copyright 2013 Will Roberts <wildwilhelm@gmail.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
