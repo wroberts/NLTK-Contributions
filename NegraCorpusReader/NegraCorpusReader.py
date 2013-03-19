@@ -24,12 +24,41 @@
 Read NEGRA corpus files.
 """
 
-from nltk.tree               import Tree
+from nltk.tree               import Tree, ParentedTree
 from nltk.util               import LazyMap
 from nltk.util               import LazyConcatenation
 from nltk.corpus.reader      import ConllCorpusReader
 from nltk.corpus.reader.util import read_regexp_block
 from nltk.corpus.reader.api  import CorpusReader
+
+class Atom(object):
+    '''
+    An object which acts like a bare string, but additionally contains
+    properties representing the part of speech, morphology and
+    syntactic parent of a token.
+    '''
+    def __init__(self, word, tag, morph, grid_lineno, parent):
+        self.word        = word
+        self.tag         = tag
+        self.morph       = morph
+        self.grid_lineno = grid_lineno
+        self.parent      = parent
+    def __str__(self):
+        return str(self.word)
+    def __unicode__(self):
+        return unicode(self.word)
+    def __repr__(self):
+        return repr(self.word)
+    def __len__(self):
+        return len(self.word)
+    def __getitem__(self, key):
+        return self.word[key]
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.word == other.word
+        return False
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 class NegraCorpusReader(ConllCorpusReader):
     """A corpus reader for NEGRA corpus files. A NEGRA corpus file consists out
@@ -158,14 +187,33 @@ class NegraCorpusReader(ConllCorpusReader):
         return LazyMap(self._get_morphological_words, self._grids(fileids))
 
     def parsed_sents(self, fileids=None):
-        """Retrieve a list of parsed sents as L{Tree} with leaves as tuples
-           in C{(word, tag)} format.
+        """
+        Retrieve a list of parsed sents as L{Tree}. The tree
+        leaves are bare strings containing the word, and are children
+        to unary tree nodes containing the part of speech tag.
+
         @return: A list of sentence tree representations.
         @rtype: C{list} of L{Tree}
         """
 
         self._require(self.WORDS, self.POS, self.PARENT)
         return LazyMap(self._get_parsed_words, self._grids(fileids))
+
+    def parsed_sents_morph(self, fileids=None):
+        """
+        Retrieve a list of parsed sents as L{ParentedTree} with
+        morphological information stored in the tree leaves. The tree
+        leaves are objects which act like bare strings containing the
+        word, but with extra properties C{tag}, C{morph},
+        C{grid_lineno} and C{parent}; the leaves are children to unary
+        tree nodes containing the part of speech tag.
+
+        @return: A list of sentence tree representations.
+        @rtype: C{list} of L{ParentedTree}
+        """
+
+        self._require(self.WORDS, self.POS, self.PARENT, self.MORPH)
+        return LazyMap(self._get_parsed_words_morph, self._grids(fileids))
 
     #==========================================================================
     # Transforms
@@ -191,20 +239,18 @@ class NegraCorpusReader(ConllCorpusReader):
                    self._get_column(grid, self._colmap[self.LEMMA]))
 
 
-    def _get_parsed_words(self, grid):
-        """Builds a chunk C{Tree} from the grid. The tree leaves are encoded
-           as C{(word, tag)} tuples.
-        @return: Return a tree representation of parsed words from the grid.
-        @rtype: L{Tree}
+    def _get_parsed_words_helper(self, tokens, node_class, node_builder):
         """
+        Builds a parse tree of type C{node_class} from the grid. The
+        tree leaves are built by the function node_builder, which
+        takes as parameters an integer line number, a list of strings
+        representing the token, and a pointer to the tree node above
+        the leaf, containing the part of speech tag.
 
-        # Get the needed columns. The parent column is crucial and contains the
-        # token's parent node.
-        tokens = zip(
-            self._get_column(grid, self._colmap[self.WORDS], filter=False),
-            self._get_column(grid, self._colmap[self.POS], filter=False),
-            self._get_column(grid, self._colmap[self.PARENT], filter=False)
-        )
+        @return: Return a tree representation of parsed words from
+        the grid.
+        @rtype: L{node_class}
+        """
 
         # Build a dictionary from the tree nodes. Tree nodes are found at the
         # end of the grid. Their word column consists out of a number starting
@@ -212,10 +258,11 @@ class NegraCorpusReader(ConllCorpusReader):
         nodes = dict()
         node_parents = dict()
         top_node = None
-        for lineno, (word, tag, parent) in [node for node in reversed(enumerate(tokens))
-                                            if node[1][0][0].startswith('#')]:
-            parent = int(parent)
-            word = int(word[1:])
+        for lineno, token in [node for node in reversed(list(enumerate(tokens)))
+                              if node[1][0][0].startswith('#')]:
+            word = int(token[0][1:])
+            tag = token[1]
+            parent = int(token[2])
 
             # The root node can be found at the end of the grid.
             if top_node is None and parent is 0:
@@ -225,7 +272,7 @@ class NegraCorpusReader(ConllCorpusReader):
             if top_node is not None and parent is 0:
                 parent = top_node
 
-            nodes[word] = Tree(tag, [])
+            nodes[word] = node_class(tag, [])
             nodes[word].grid_lineno = lineno
             node_parents[word] = parent
 
@@ -235,8 +282,8 @@ class NegraCorpusReader(ConllCorpusReader):
 
         # Walk through the leaves and add them to their parents.
         last_parent = None
-        for lineno, (word, tag, parent) in enumerate(tokens[: - len(nodes)]):
-            parent = int(parent)
+        for lineno, token in enumerate(tokens[: - len(nodes)]):
+            parent = int(token[2])
 
             # The Negra corpus format allows tokens outside the sentence tree.
             # Prevent this, by changing their parent to the top_node's number.
@@ -255,13 +302,66 @@ class NegraCorpusReader(ConllCorpusReader):
                     node = node_parent
 
             # Add the current token to its parent.
-            token = Tree(tag, [])
-            token.append(word)
-            token.grid_lineno = lineno
-            nodes[parent].append(token)
+            tag = token[1]
+            node = node_class(tag, [])
+            node.append(node_builder(lineno, token, node))
+            node.grid_lineno = lineno
+            nodes[parent].append(node)
             last_parent = parent
 
         return nodes[top_node]
+
+    def _get_parsed_words(self, grid):
+        """
+        Builds a parse tree of type C{Tree} from the grid. The tree
+        leaves are bare strings containing the word, and are children
+        to unary tree nodes containing the part of speech tag.
+
+        @return: Return a tree representation of parsed words from the grid.
+        @rtype: L{Tree}
+        """
+
+        # Get the needed columns. The parent column is crucial and contains the
+        # token's parent node.
+        tokens = zip(
+            self._get_column(grid, self._colmap[self.WORDS], filter=False),
+            self._get_column(grid, self._colmap[self.POS], filter=False),
+            self._get_column(grid, self._colmap[self.PARENT], filter=False)
+        )
+
+        return self._get_parsed_words_helper(tokens,
+                                             Tree,
+                                             lambda l, t, n: t[0])
+
+    def _get_parsed_words_morph(self, grid):
+        """
+        Builds a parse tree of type C{ParentedTree} from the grid. The
+        tree leaves are objects which act like bare strings containing
+        the word, but with extra properties C{tag}, C{morph},
+        C{grid_lineno} and C{parent}; the leaves are children to unary
+        tree nodes containing the part of speech tag.
+
+        @return: Return a tree representation of parsed words from the grid.
+        @rtype: L{ParentedTree}
+        """
+
+        # Get the needed columns. The parent column is crucial and contains the
+        # token's parent node.
+        tokens = zip(
+            self._get_column(grid, self._colmap[self.WORDS], filter=False),
+            self._get_column(grid, self._colmap[self.POS], filter=False),
+            self._get_column(grid, self._colmap[self.PARENT], filter=False),
+            self._get_column(grid, self._colmap[self.MORPH], filter=False)
+            )
+
+        return self._get_parsed_words_helper(tokens,
+                                             ParentedTree,
+                                             lambda l, t, n: Atom(word=t[0],
+                                                                  tag=t[1],
+                                                                  morph=t[3],
+                                                                  grid_lineno=l,
+                                                                  parent=n))
+
 
     #==========================================================================
     # Grid reading
