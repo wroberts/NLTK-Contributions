@@ -82,7 +82,7 @@ class NegraCorpusReader(ConllCorpusReader):
         @param root: The root directory of the corpus files.
         @param fileids: A list of or regex specifying the files to read from.
         @param column_types: An optional C{list} of columns in the corpus.
-        @param top_node: The top node of chunked sentence trees.
+        @param top_node: The top node of parsed sentence trees.
         @param beginning_of_sentence: A regex specifying the start of a sentence
         @param end_of_sentence: A regex specifying the end of a sentence
         @param encoding: The default corpus file encoding.
@@ -153,27 +153,15 @@ class NegraCorpusReader(ConllCorpusReader):
         self._require(self.WORDS, self.MORPH)
         return LazyMap(self._get_morphological_words, self._grids(fileids))
 
-
-    def chunked_words(self, fileids=None):
-        """Retrieve a list of chunked words. Words are encoded as C{(word, tag)}
-           and chunks are encoded as trees over C{(word, tag)} leaves.
-        @return: A tree representation of the word chunk.
-        @rtype: C{list} of (C{(str,str)} and L{Tree})
-        """
-
-        self._require(self.WORDS, self.POS, self.PARENT)
-        return LazyConcatenation(LazyMap(self._get_chunked_words,
-                                         self._grids(fileids)))
-
-    def chunked_sents(self, fileids=None):
-        """Retrieve a list of chunked sents as L{Tree} with leaves as tuples
+    def parsed_sents(self, fileids=None):
+        """Retrieve a list of parsed sents as L{Tree} with leaves as tuples
            in C{(word, tag)} format.
         @return: A list of sentence tree representations.
         @rtype: C{list} of L{Tree}
         """
 
         self._require(self.WORDS, self.POS, self.PARENT)
-        return LazyMap(self._get_chunked_words, self._grids(fileids))
+        return LazyMap(self._get_parsed_words, self._grids(fileids))
 
     #==========================================================================
     # Transforms
@@ -199,10 +187,10 @@ class NegraCorpusReader(ConllCorpusReader):
                    self._get_column(grid, self._colmap[self.LEMMA]))
 
 
-    def _get_chunked_words(self, grid):
+    def _get_parsed_words(self, grid):
         """Builds a chunk C{Tree} from the grid. The tree leaves are encoded
            as C{(word, tag)} tuples.
-        @return: Return a tree representation of chunked words from the grid.
+        @return: Return a tree representation of parsed words from the grid.
         @rtype: L{Tree}
         """
 
@@ -262,7 +250,7 @@ class NegraCorpusReader(ConllCorpusReader):
                     node = node_parent
 
             # Add the current token to its parent.
-            nodes[parent].append((word, tag))
+            nodes[parent].append(Tree(tag, [word]))
             last_parent = parent
 
         return nodes[top_node]
