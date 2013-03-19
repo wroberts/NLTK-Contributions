@@ -38,7 +38,7 @@ class NegraCorpusReader(ConllCorpusReader):
     words and columns containing the lemma, tag, chunk and/or morphological tag.
     Each word and its tag information has its own line. Eg. the form
 
-    %% word	lemma       tag     parent
+    %% word     lemma       tag     parent
     #BOS 1
     The         the         DET     500
     house       house       N       500
