@@ -212,8 +212,8 @@ class NegraCorpusReader(ConllCorpusReader):
         nodes = dict()
         node_parents = dict()
         top_node = None
-        for (word, tag, parent) in [node for node in reversed(tokens)
-                                    if node[0][0].startswith('#')]:
+        for lineno, (word, tag, parent) in [node for node in reversed(enumerate(tokens))
+                                            if node[1][0][0].startswith('#')]:
             parent = int(parent)
             word = int(word[1:])
 
@@ -226,6 +226,7 @@ class NegraCorpusReader(ConllCorpusReader):
                 parent = top_node
 
             nodes[word] = Tree(tag, [])
+            nodes[word].grid_lineno = lineno
             node_parents[word] = parent
 
         # Sentence is not correctly formeatted.
@@ -234,7 +235,7 @@ class NegraCorpusReader(ConllCorpusReader):
 
         # Walk through the leaves and add them to their parents.
         last_parent = None
-        for (word, tag, parent) in tokens[: - len(nodes)]:
+        for lineno, (word, tag, parent) in enumerate(tokens[: - len(nodes)]):
             parent = int(parent)
 
             # The Negra corpus format allows tokens outside the sentence tree.
@@ -254,7 +255,10 @@ class NegraCorpusReader(ConllCorpusReader):
                     node = node_parent
 
             # Add the current token to its parent.
-            nodes[parent].append(Tree(tag, [word]))
+            token = Tree(tag, [])
+            token.append(word)
+            token.grid_lineno = lineno
+            nodes[parent].append(token)
             last_parent = parent
 
         return nodes[top_node]
