@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
 # Natural Language Toolkit: NEGRA Corpus Reader
 #
 # URL: <http://www.experimentallabor.de/>
