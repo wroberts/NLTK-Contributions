@@ -42,7 +42,7 @@ class Atom(object):
         self.tag         = tag
         self.morph       = morph
         self.grid_lineno = grid_lineno
-        self.parent      = parent
+        self._parent     = parent
     def __str__(self):
         return str(self.word)
     def __unicode__(self):
@@ -59,6 +59,9 @@ class Atom(object):
         return False
     def __ne__(self, other):
         return not self.__eq__(other)
+    def parent(self):
+        '''Returns the tree node which is parent to this Atom.'''
+        return self._parent
 
 class NegraCorpusReader(ConllCorpusReader):
     """A corpus reader for NEGRA corpus files. A NEGRA corpus file consists out
