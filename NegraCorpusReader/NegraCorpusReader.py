@@ -37,10 +37,15 @@ class Atom(object):
     properties representing the part of speech, morphology and
     syntactic parent of a token.
     '''
-    def __init__(self, word, tag, morph, grid_lineno, parent):
+    def __init__(self, word, tag, morph = None, lemma = None,
+                 edge = None, secedge = None, grid_lineno = None,
+                 parent = None):
         self.word        = word
         self.tag         = tag
         self.morph       = morph
+        self.lemma       = lemma
+        self.edge        = edge
+        self.secedge     = secedge
         self.grid_lineno = grid_lineno
         self._parent     = parent
     def __str__(self):
@@ -262,10 +267,10 @@ class NegraCorpusReader(ConllCorpusReader):
         node_parents = dict()
         top_node = None
         for lineno, token in [node for node in reversed(list(enumerate(tokens)))
-                              if node[1][0][0].startswith('#')]:
-            word = int(token[0][1:])
-            tag = token[1]
-            parent = int(token[2])
+                              if node[1][self.WORDS].startswith('#')]:
+            word = int(token[self.WORDS][1:])
+            tag = token[self.POS]
+            parent = int(token[self.PARENT])
 
             # The root node can be found at the end of the grid.
             if top_node is None and parent is 0:
@@ -277,6 +282,8 @@ class NegraCorpusReader(ConllCorpusReader):
 
             nodes[word] = node_class(tag, [])
             nodes[word].grid_lineno = lineno
+            nodes[word].edge = (token[self.EDGE] if self.EDGE in token else None)
+            nodes[word].secedge = (token[self.SECEDGE] if self.SECEDGE in token else None)
             node_parents[word] = parent
 
         # Sentence is not correctly formeatted.
@@ -286,7 +293,7 @@ class NegraCorpusReader(ConllCorpusReader):
         # Walk through the leaves and add them to their parents.
         last_parent = None
         for lineno, token in enumerate(tokens[: - len(nodes)]):
-            parent = int(token[2])
+            parent = int(token[self.PARENT])
 
             # The Negra corpus format allows tokens outside the sentence tree.
             # Prevent this, by changing their parent to the top_node's number.
@@ -305,10 +312,12 @@ class NegraCorpusReader(ConllCorpusReader):
                     node = node_parent
 
             # Add the current token to its parent.
-            tag = token[1]
+            tag = token[self.POS]
             node = node_class(tag, [])
             node.append(node_builder(lineno, token, node))
             node.grid_lineno = lineno
+            node.edge = (token[self.EDGE] if self.EDGE in token else None)
+            node.secedge = (token[self.SECEDGE] if self.SECEDGE in token else None)
             nodes[parent].append(node)
             last_parent = parent
 
@@ -326,15 +335,15 @@ class NegraCorpusReader(ConllCorpusReader):
 
         # Get the needed columns. The parent column is crucial and contains the
         # token's parent node.
-        tokens = zip(
-            self._get_column(grid, self._colmap[self.WORDS], filter=False),
-            self._get_column(grid, self._colmap[self.POS], filter=False),
-            self._get_column(grid, self._colmap[self.PARENT], filter=False)
-        )
+        tokens = map(dict, zip(
+            [(self.WORDS, x) for x in self._get_column(grid, self._colmap[self.WORDS], filter=False)],
+            [(self.POS, x) for x in self._get_column(grid, self._colmap[self.POS], filter=False)],
+            [(self.PARENT, x) for x in self._get_column(grid, self._colmap[self.PARENT], filter=False)]
+        ))
 
         return self._get_parsed_words_helper(tokens,
                                              Tree,
-                                             lambda l, t, n: t[0])
+                                             lambda l, t, n: t[self.WORDS])
 
     def _get_parsed_words_morph(self, grid):
         """
@@ -350,18 +359,25 @@ class NegraCorpusReader(ConllCorpusReader):
 
         # Get the needed columns. The parent column is crucial and contains the
         # token's parent node.
-        tokens = zip(
-            self._get_column(grid, self._colmap[self.WORDS], filter=False),
-            self._get_column(grid, self._colmap[self.POS], filter=False),
-            self._get_column(grid, self._colmap[self.PARENT], filter=False),
-            self._get_column(grid, self._colmap[self.MORPH], filter=False)
-            )
+        tokens = map(dict, zip(
+            [(self.WORDS, x) for x in self._get_column(grid, self._colmap[self.WORDS], filter=False)],
+            [(self.POS, x) for x in self._get_column(grid, self._colmap[self.POS], filter=False)],
+            [(self.PARENT, x) for x in self._get_column(grid, self._colmap[self.PARENT], filter=False)],
+            [(self.MORPH, x) for x in self._get_column(grid, self._colmap[self.MORPH], filter=False)]
+            ))
+        for column_name in [self.LEMMA, self.EDGE, self.SECEDGE]:
+            if column_name in self._colmap:
+                for token, column_value in zip(tokens, self._get_column(grid, self._colmap[column_name], filter=False)):
+                    token[column_name] = column_value
 
         return self._get_parsed_words_helper(tokens,
                                              ParentedTree,
-                                             lambda l, t, n: Atom(word=t[0],
-                                                                  tag=t[1],
-                                                                  morph=t[3],
+                                             lambda l, t, n: Atom(word=t[self.WORDS],
+                                                                  tag=t[self.POS],
+                                                                  morph=t[self.MORPH],
+                                                                  lemma=(t[self.LEMMA] if self.LEMMA in t else None),
+                                                                  edge=(t[self.EDGE] if self.EDGE in t else None),
+                                                                  secedge=(t[self.SECEDGE] if self.SECEDGE in t else None),
                                                                   grid_lineno=l,
                                                                   parent=n))
 
@@ -394,7 +410,8 @@ class NegraCorpusReader(ConllCorpusReader):
         """Overridden; allows filtering sentence tree nodes from the grid"""
 
         # collect the column
-        column_values = [grid[i][column_index] for i in range(len(grid))]
+        column_values = [(grid[i][column_index] if column_index < len(grid[i]) else '')
+                         for i in range(len(grid))]
 
         # filter the column if needed
         if filter:
