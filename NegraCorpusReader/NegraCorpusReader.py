@@ -38,14 +38,15 @@ class Atom(object):
     syntactic parent of a token.
     '''
     def __init__(self, word, tag, morph = None, lemma = None,
-                 edge = None, secedge = None, grid_lineno = None,
-                 parent = None):
+                 edge = None, secedge = None, comment = None,
+                 grid_lineno = None, parent = None):
         self.word        = word
         self.tag         = tag
         self.morph       = morph
         self.lemma       = lemma
         self.edge        = edge
         self.secedge     = secedge
+        self.comment     = comment
         self.grid_lineno = grid_lineno
         self._parent     = parent
     def __str__(self):
@@ -207,7 +208,7 @@ class NegraCorpusReader(ConllCorpusReader):
         self._require(self.WORDS, self.POS, self.PARENT)
         return LazyMap(self._get_parsed_words, self._grids(fileids))
 
-    def parsed_sents_morph(self, fileids=None):
+    def parsed_sents_morph(self, fileids = None, secedge_copy = True):
         """
         Retrieve a list of parsed sents as L{ParentedTree} with
         morphological information stored in the tree leaves. The tree
@@ -221,7 +222,8 @@ class NegraCorpusReader(ConllCorpusReader):
         """
 
         self._require(self.WORDS, self.POS, self.PARENT, self.MORPH)
-        return LazyMap(self._get_parsed_words_morph, self._grids(fileids))
+        return LazyMap(lambda g: self._get_parsed_words_morph(g, secedge_copy),
+                       self._grids(fileids))
 
     #==========================================================================
     # Transforms
@@ -247,7 +249,8 @@ class NegraCorpusReader(ConllCorpusReader):
                    self._get_column(grid, self._colmap[self.LEMMA]))
 
 
-    def _get_parsed_words_helper(self, tokens, node_class, node_builder):
+    def _get_parsed_words_helper(self, tokens, node_class, node_builder,
+                                 secedge_copy = True):
         """
         Builds a parse tree of type C{node_class} from the grid. The
         tree leaves are built by the function node_builder, which
@@ -266,10 +269,10 @@ class NegraCorpusReader(ConllCorpusReader):
         nodes = dict()
         node_parents = dict()
         top_node = None
+        secedge_copies = []
         for lineno, token in [node for node in reversed(list(enumerate(tokens)))
                               if node[1][self.WORDS].startswith('#')]:
             word = int(token[self.WORDS][1:])
-            tag = token[self.POS]
             parent = int(token[self.PARENT])
 
             # The root node can be found at the end of the grid.
@@ -280,11 +283,21 @@ class NegraCorpusReader(ConllCorpusReader):
             if top_node is not None and parent is 0:
                 parent = top_node
 
-            nodes[word] = node_class(tag, [])
+            nodes[word] = node_class(token[self.POS], [])
             nodes[word].grid_lineno = lineno
             nodes[word].edge = (token[self.EDGE] if self.EDGE in token else None)
-            nodes[word].secedge = (token[self.SECEDGE] if self.SECEDGE in token else None)
             node_parents[word] = parent
+
+            if secedge_copy:
+                if self.SECEDGE in token and token[self.SECEDGE]:
+                    assert self.COMMENT in token and token[self.COMMENT]
+                    parent = int(token[self.COMMENT])
+                    if parent is 0:
+                        parent = top_node
+                    secedge_copies.append((word, token[self.SECEDGE], parent))
+            else:
+                nodes[word].secedge = (token[self.SECEDGE] if self.SECEDGE in token else None)
+                nodes[word].comment = (token[self.COMMENT] if self.COMMENT in token else None)
 
         # Sentence is not correctly formeatted.
         if top_node is None:
@@ -312,14 +325,37 @@ class NegraCorpusReader(ConllCorpusReader):
                     node = node_parent
 
             # Add the current token to its parent.
-            tag = token[self.POS]
-            node = node_class(tag, [])
+            node = node_class(token[self.POS], [])
             node.append(node_builder(lineno, token, node))
             node.grid_lineno = lineno
             node.edge = (token[self.EDGE] if self.EDGE in token else None)
-            node.secedge = (token[self.SECEDGE] if self.SECEDGE in token else None)
             nodes[parent].append(node)
             last_parent = parent
+
+            if secedge_copy:
+                if self.SECEDGE in token and token[self.SECEDGE]:
+                    assert self.COMMENT in token and token[self.COMMENT]
+                    node2 = node_class(token[self.POS], [])
+                    token2 = token.copy()
+                    token2.update({self.EDGE:    token[self.SECEDGE],
+                                   self.PARENT:  token[self.COMMENT],
+                                   self.SECEDGE: '',
+                                   self.COMMENT: ''})
+                    node2.append(node_builder(lineno, token2, node2))
+                    node2.grid_lineno = lineno
+                    node2.edge = token[self.SECEDGE]
+                    parent = int(token[self.COMMENT])
+                    if parent is 0:
+                        parent = top_node
+                    nodes[parent].append(node2)
+            else:
+                node.secedge = (token[self.SECEDGE] if self.SECEDGE in token else None)
+                node.comment = (token[self.COMMENT] if self.COMMENT in token else None)
+
+        # copy any subtrees with secondary edges
+        for (subtree_word, edge, parent_word) in secedge_copies:
+            self._copy_subtree_helper(nodes, subtree_word, edge, parent_word,
+                                      tokens, node_class, node_builder)
 
         return nodes[top_node]
 
@@ -343,9 +379,10 @@ class NegraCorpusReader(ConllCorpusReader):
 
         return self._get_parsed_words_helper(tokens,
                                              Tree,
-                                             lambda l, t, n: t[self.WORDS])
+                                             lambda l, t, n: t[self.WORDS],
+                                             False)
 
-    def _get_parsed_words_morph(self, grid):
+    def _get_parsed_words_morph(self, grid, secedge_copy = True):
         """
         Builds a parse tree of type C{ParentedTree} from the grid. The
         tree leaves are objects which act like bare strings containing
@@ -365,7 +402,7 @@ class NegraCorpusReader(ConllCorpusReader):
             [(self.PARENT, x) for x in self._get_column(grid, self._colmap[self.PARENT], filter=False)],
             [(self.MORPH, x) for x in self._get_column(grid, self._colmap[self.MORPH], filter=False)]
             ))
-        for column_name in [self.LEMMA, self.EDGE, self.SECEDGE]:
+        for column_name in [self.LEMMA, self.EDGE, self.SECEDGE, self.COMMENT]:
             if column_name in self._colmap:
                 for token, column_value in zip(tokens, self._get_column(grid, self._colmap[column_name], filter=False)):
                     token[column_name] = column_value
@@ -378,8 +415,10 @@ class NegraCorpusReader(ConllCorpusReader):
                                                                   lemma=(t[self.LEMMA] if self.LEMMA in t else None),
                                                                   edge=(t[self.EDGE] if self.EDGE in t else None),
                                                                   secedge=(t[self.SECEDGE] if self.SECEDGE in t else None),
+                                                                  comment=(t[self.COMMENT] if self.COMMENT in t else None),
                                                                   grid_lineno=l,
-                                                                  parent=n))
+                                                                  parent=n),
+                                             secedge_copy)
 
 
     #==========================================================================
@@ -418,3 +457,30 @@ class NegraCorpusReader(ConllCorpusReader):
             column_values = [token for token in column_values
                              if token[0] is not '#']
         return column_values
+
+    @staticmethod
+    def _copy_subtree_helper(nodes, subtree_word, edge, parent_word,
+                             tokens, node_class, node_builder):
+        '''
+        Copies a subtree of a parse tree to "unravel" secondary edges.
+        '''
+        subtree_copy = node_class(nodes[subtree_word].node, [])
+        subtree_copy.grid_lineno = nodes[subtree_word].grid_lineno
+        subtree_copy.edge = edge
+        todo = []
+        for child in nodes[subtree_word]:
+            todo.append((subtree_copy, child))
+        while todo:
+            (subtree_parent, current) = todo.pop(0)
+            if isinstance(current, node_class):
+                current_copy = node_class(current.node, [])
+                current_copy.grid_lineno = current.grid_lineno
+                current_copy.edge = current.edge
+                for child in current:
+                    todo.append((current_copy, child))
+            else:
+                current_copy = node_builder(current.grid_lineno,
+                                            tokens[current.grid_lineno],
+                                            subtree_parent)
+            subtree_parent.append(current_copy)
+        nodes[parent_word].append(subtree_copy)
