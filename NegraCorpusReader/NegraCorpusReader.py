@@ -486,8 +486,8 @@ class NegraCorpusReader(ConllCorpusReader):
                 for child in current:
                     todo.append((current_copy, child))
             else:
-                current_copy = node_builder(current.grid_lineno,
-                                            tokens[current.grid_lineno],
+                current_copy = node_builder(subtree_parent.grid_lineno,
+                                            tokens[subtree_parent.grid_lineno],
                                             subtree_parent)
             subtree_parent.append(current_copy)
         nodes[parent_word].append(subtree_copy)
