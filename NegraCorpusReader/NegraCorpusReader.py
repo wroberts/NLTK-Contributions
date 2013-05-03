@@ -334,7 +334,11 @@ class NegraCorpusReader(ConllCorpusReader):
 
             if secedge_copy:
                 if self.SECEDGE in token and token[self.SECEDGE]:
-                    assert self.COMMENT in token and token[self.COMMENT]
+                    if not (self.COMMENT in token and
+                            token[self.COMMENT] and
+                            token[self.COMMENT].isdigit()):
+                        # sentence is not correctly formatted
+                        return None
                     node2 = node_class(token[self.POS], [])
                     token2 = token.copy()
                     token2.update({self.EDGE:    token[self.SECEDGE],
@@ -354,6 +358,9 @@ class NegraCorpusReader(ConllCorpusReader):
 
         # copy any subtrees with secondary edges
         for (subtree_word, edge, parent_word) in secedge_copies:
+            if parent_word not in nodes:
+                # sentence not well-formed
+                return None
             self._copy_subtree_helper(nodes, subtree_word, edge, parent_word,
                                       tokens, node_class, node_builder)
 
