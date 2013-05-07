@@ -30,6 +30,7 @@ from nltk.util               import LazyConcatenation
 from nltk.corpus.reader      import ConllCorpusReader
 from nltk.corpus.reader.util import read_regexp_block
 from nltk.corpus.reader.api  import CorpusReader
+import itertools
 
 class Atom(object):
     '''
@@ -153,6 +154,14 @@ class NegraCorpusReader(ConllCorpusReader):
     # Data access methods
     #==========================================================================
 
+    def sents(self, fileids=None):
+        '''
+        Retrieves a list of unannotated sentences from the
+        corpus.
+        '''
+        self._require(self.WORDS)
+        return LazyMap(self._get_words, self._grids(fileids))
+
     def lemmatised_words(self, fileids=None):
         """Retrieve a list of lemmatised words. Words are encoded as tuples in
            C{(word, lemma)} form.
@@ -229,6 +238,21 @@ class NegraCorpusReader(ConllCorpusReader):
     # Transforms
     #==========================================================================
 
+    def _get_words(self, grid):
+        '''
+        Retrieve just the words from the corpus, without any
+        annotations.
+        '''
+        words = self._get_column(grid, self._colmap['words'])
+        last_idx = list(itertools.takewhile(
+                lambda x: (words[-x - 1].startswith('#') and
+                           words[-x - 1][1:].isdigit()),
+                range(len(words))))
+        if last_idx:
+            last_idx = last_idx[-1]
+            return words[:-last_idx - 1]
+        else:
+            return words
 
     def _get_morphological_words(self, grid):
         """Retrieve the words and their morphological type.
