@@ -270,10 +270,10 @@ def _sentence_etree_to_tokens(sentence_etree):
             tok = id_to_tokens[edge.get('idref')][1]
             tok[NegraCorpusReader.PARENT]  = parent_word
             tok[NegraCorpusReader.EDGE]    = edge.get('label')
-        for secedge in nonterminal.getiterator('edge'):
-            tok = id_to_tokens[edge.get('idref')][1]
+        for secedge in nonterminal.getiterator('secedge'):
+            tok = id_to_tokens[secedge.get('idref')][1]
             tok[NegraCorpusReader.COMMENT] = parent_word
-            tok[NegraCorpusReader.SECEDGE] = edge.get('label')
+            tok[NegraCorpusReader.SECEDGE] = secedge.get('label')
     # move the root nonterminal to the end of tokens
     last_idx    = len(tokens) - 1
     root_nt_idx = id_to_tokens[graph.get('root')][0]
