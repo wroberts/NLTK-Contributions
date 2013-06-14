@@ -251,8 +251,12 @@ def _sentence_etree_to_tokens(sentence_etree):
         tokens.append(tok)
         id_to_tokens[nonterminal.get('id')] = (idx, tokens[-1])
     # renumber the non-terminals which have non-numeric names (e.g., VROOT)
-    renumbered_non_terminal_value = max(int(x) for x in non_terminal_words
-                                        if x.isdigit()) + 1
+    renumbered_non_terminal_value = [int(x) for x in non_terminal_words
+                                        if x.isdigit()]
+    if renumbered_non_terminal_value:
+        renumbered_non_terminal_value = max(renumbered_non_terminal_value) + 1
+    else:
+        renumbered_non_terminal_value = 500
     for tok in tokens[num_terminals:]:
         if not tok[NegraCorpusReader.WORDS][1:].isdigit():
             new_name = '#{0}'.format(renumbered_non_terminal_value)
