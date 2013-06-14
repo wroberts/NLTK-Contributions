@@ -277,13 +277,3 @@ def _sentence_etree_to_tokens(sentence_etree):
         tokens[last_idx], tokens[root_nt_idx] = (tokens[root_nt_idx],
                                                  tokens[last_idx])
     return tokens
-
-
-
-
-
-#TIGER_DIR = '../../corpora/tiger'
-TIGER_DIR = '../../../corpora/tiger'
-TIGER_FILE = 'tiger_release_aug07.corrected.16012013.xml'
-
-reader = TigerXMLCorpusReader(TIGER_DIR, TIGER_FILE)
