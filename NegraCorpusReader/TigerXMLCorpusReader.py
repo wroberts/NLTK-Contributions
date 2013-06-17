@@ -234,6 +234,7 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
     for idx, terminal in enumerate(graph.getiterator('t')):
         tok = tree_class(unicode(terminal.get('pos')), [])
         tok.grid_lineno = idx
+        tok.edge        = None
         atom = atom_builder(idx, terminal, tok)
         tok.append(atom)
         tokens[terminal.get('id')] = tok
@@ -249,6 +250,7 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
         if not (nonterminal.get('id') == vroot_id and skip_vroot):
             tok = tree_class(unicode(nonterminal.get('cat')), [])
             tok.grid_lineno = idx
+            tok.edge        = None
             tokens[nonterminal.get('id')] = tok
             non_terminal_ids.add(nonterminal.get('id'))
             for secedge in nonterminal.getiterator('secedge'):
