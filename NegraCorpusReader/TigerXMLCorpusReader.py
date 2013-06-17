@@ -230,6 +230,7 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
     tokens          = {}
     secedges        = []
     terminal_etrees = {}
+    terminal_ids    = set()
     # build the list of terminals
     for idx, terminal in enumerate(graph.getiterator('t')):
         tok = tree_class(unicode(terminal.get('pos')), [])
@@ -238,12 +239,12 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
         atom = atom_builder(idx, terminal, tok)
         tok.append(atom)
         tokens[terminal.get('id')] = tok
+        terminal_ids.add(terminal.get('id'))
         terminal_etrees[idx] = terminal
         for secedge in terminal.getiterator('secedge'):
             secedges.append((tok, unicode(secedge.get('label')), secedge.get('idref')))
-    num_terminals    = len(tokens)
-    non_terminal_ids = set()
-    root_id          = (None if skip_vroot else vroot_id)
+    num_terminals = len(tokens)
+    root_id       = (None if skip_vroot else vroot_id)
     # build the list of non-terminals
     for idx, nonterminal in enumerate(graph.getiterator('nt')):
         idx += num_terminals
@@ -252,12 +253,11 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
             tok.grid_lineno = idx
             tok.edge        = None
             tokens[nonterminal.get('id')] = tok
-            non_terminal_ids.add(nonterminal.get('id'))
             for secedge in nonterminal.getiterator('secedge'):
                 secedges.append((tok, unicode(secedge.get('label')), secedge.get('idref')))
         else:
             for edge in nonterminal.getiterator('edge'):
-                if edge.get('idref') in non_terminal_ids:
+                if edge.get('idref') not in terminal_ids:
                     root_id = edge.get('idref')
     # attach terminals and non-terminals to their parents using the information in <edge> tags
     for nonterminal in graph.getiterator('nt'):
