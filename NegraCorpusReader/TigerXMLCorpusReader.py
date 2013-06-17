@@ -214,70 +214,93 @@ def _rewrite_dict_keys(dict_items, key_name_map):
     '''
     return ((key_name_map.get(k, k), v) for (k, v) in dict_items)
 
+def _tiger_idref_to_word(idref):
+    '''
+    Converts a TIGER-XML idref into a numeric word.  idref is a token
+    like s282_5, made up of the sentence ID, an underscore and the
+    numberic word.  VROOT is the only non-numeric idref in any TIGER
+    graph and is renumbered by this method to 0.  The words returned
+    by this method have a # character prefix.
+    '''
+    idref = idref.split('_')[1]
+    if not idref.isdigit():
+        return '#0'
+    return '#' + idref
+
+def _make_empty_negra_token():
+    '''
+    Makes an empty token structure for processing with the
+    NegraCorpusReader.
+    '''
+    return {
+        NegraCorpusReader.WORDS:   None,
+        NegraCorpusReader.LEMMA:   '--',
+        NegraCorpusReader.POS:     None,
+        NegraCorpusReader.MORPH:   '--',
+        NegraCorpusReader.EDGE:    None,
+        NegraCorpusReader.PARENT:  '0',
+        NegraCorpusReader.SECEDGE: None,
+        NegraCorpusReader.COMMENT: '0',
+            }
+
 def _sentence_etree_to_tokens(sentence_etree):
     '''
     Helper function to transform an ElementTree element read from the
     TIGER XML corpus into the format used by the NegraCorpusReader.
     '''
-    graph = sentence_etree.find('graph')
+    # build the list of terminals
+    graph        = sentence_etree.find('graph')
+    vroot_id     = graph.get('root')
+    skip_vroot   = (_tiger_idref_to_word(vroot_id) == '#0')
     id_to_tokens = {}
-    tokens = []
-    # insert terminals into tokens list in sentence order
-    for idx, terminal in enumerate(graph.getiterator("t")):
-        tokens.append(dict(_rewrite_dict_keys(terminal.items(),
-                                              XML_ATTR_TO_NEGRA_COL_NAME_MAP)))
-        tokens[-1].update(dict([
-                    (NegraCorpusReader.EDGE,    None),
-                    (NegraCorpusReader.PARENT,  None),
-                    (NegraCorpusReader.SECEDGE, None),
-                    (NegraCorpusReader.COMMENT, None)]))
-        id_to_tokens[terminal.get('id')] = (idx, tokens[-1])
-    # insert non-terminals into tokens list after the terminals
-    num_terminals = len(tokens)
-    non_terminal_words = []
-    for idx, nonterminal in enumerate(graph.getiterator("nt")):
-        idx += num_terminals
-        tok_id = '#' + nonterminal.get('id').split('_')[1]
-        non_terminal_words.append(tok_id[1:])
-        tok = {}
-        tok[NegraCorpusReader.WORDS]   = tok_id
-        tok[NegraCorpusReader.LEMMA]   = '--'
-        tok[NegraCorpusReader.POS]     = nonterminal.get('cat')
-        tok[NegraCorpusReader.MORPH]   = '--'
-        tok[NegraCorpusReader.EDGE]    = None
-        tok[NegraCorpusReader.PARENT]  = 0
-        tok[NegraCorpusReader.SECEDGE] = None
-        tok[NegraCorpusReader.COMMENT] = None
+    tokens       = []
+    for idx, terminal in enumerate(graph.getiterator('t')):
+        tok = _make_empty_negra_token()
+        tok.update(_rewrite_dict_keys(terminal.items(),
+                                      XML_ATTR_TO_NEGRA_COL_NAME_MAP))
+        for secedge in terminal.getiterator('secedge'):
+            tok[NegraCorpusReader.SECEDGE] = secedge.get('label')
+            tok[NegraCorpusReader.COMMENT] = _tiger_idref_to_word(
+                secedge.get('idref'))[1:]
         tokens.append(tok)
-        id_to_tokens[nonterminal.get('id')] = (idx, tokens[-1])
-    # renumber the non-terminals which have non-numeric names (e.g., VROOT)
-    renumbered_non_terminal_value = [int(x) for x in non_terminal_words
-                                        if x.isdigit()]
-    if renumbered_non_terminal_value:
-        renumbered_non_terminal_value = max(renumbered_non_terminal_value) + 1
-    else:
-        renumbered_non_terminal_value = 500
-    for tok in tokens[num_terminals:]:
-        if not tok[NegraCorpusReader.WORDS][1:].isdigit():
-            new_name = '#{0}'.format(renumbered_non_terminal_value)
-            tok[NegraCorpusReader.WORDS] = new_name
-            renumbered_non_terminal_value += 1
-    # connect terminals and non-terminals to their parents
-    for nonterminal in graph.getiterator("nt"):
-        parent_tok  = id_to_tokens[nonterminal.get('id')][1]
-        parent_word = parent_tok[NegraCorpusReader.WORDS][1:]
+        id_to_tokens[terminal.get('id')] = (idx, tok)
+    # build the list of non-terminals
+    num_terminals    = len(tokens)
+    non_terminal_ids = set()
+    for idx, nonterminal in enumerate(graph.getiterator('nt')):
+        idx += num_terminals
+        if nonterminal.get('id') == vroot_id and skip_vroot:
+            continue
+        tok = _make_empty_negra_token()
+        tok[NegraCorpusReader.WORDS] = _tiger_idref_to_word(
+            nonterminal.get('id'))
+        tok[NegraCorpusReader.POS]   = nonterminal.get('cat')
+        for secedge in nonterminal.getiterator('secedge'):
+            tok[NegraCorpusReader.SECEDGE] = secedge.get('label')
+            tok[NegraCorpusReader.COMMENT] = _tiger_idref_to_word(
+                secedge.get('idref'))[1:]
+        tokens.append(tok)
+        id_to_tokens[nonterminal.get('id')] = (idx, tok)
+        non_terminal_ids.add(nonterminal.get('id'))
+    # connect terminals and non-terminals to their parents using
+    # <edge> tags; also keep a lookout for the non-terminal which is
+    # child to the VROOT element.
+    root_idx = -1
+    for nonterminal in graph.getiterator('nt'):
+        is_vroot = (nonterminal.get('id') == vroot_id)
+        parent_word = _tiger_idref_to_word(nonterminal.get('id'))[1:]
         for edge in nonterminal.getiterator('edge'):
             tok = id_to_tokens[edge.get('idref')][1]
-            tok[NegraCorpusReader.PARENT]  = parent_word
-            tok[NegraCorpusReader.EDGE]    = edge.get('label')
-        for secedge in nonterminal.getiterator('secedge'):
-            tok = id_to_tokens[secedge.get('idref')][1]
-            tok[NegraCorpusReader.COMMENT] = parent_word
-            tok[NegraCorpusReader.SECEDGE] = secedge.get('label')
-    # move the root nonterminal to the end of tokens
-    last_idx    = len(tokens) - 1
-    root_nt_idx = id_to_tokens[graph.get('root')][0]
-    if last_idx != root_nt_idx:
-        tokens[last_idx], tokens[root_nt_idx] = (tokens[root_nt_idx],
-                                                 tokens[last_idx])
+            tok[NegraCorpusReader.PARENT] = parent_word
+            tok[NegraCorpusReader.EDGE]   = edge.get('label')
+            if is_vroot:
+                if skip_vroot:
+                    if edge.get('idref') in non_terminal_ids:
+                        root_idx = id_to_tokens[edge.get('idref')][0]
+                else:
+                    root_idx = id_to_tokens[nonterminal.get('id')][0]
+    # move the root nonterminal to the end of the tokens list if needed
+    if root_idx != -1 and root_idx != len(tokens) - 1:
+        tokens[len(tokens) - 1], tokens[root_idx] = (tokens[root_idx],
+                                                     tokens[len(tokens) - 1])
     return tokens
