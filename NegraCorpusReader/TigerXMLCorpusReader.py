@@ -242,7 +242,8 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
         terminal_ids.add(terminal.get('id'))
         terminal_etrees[idx] = terminal
         for secedge in terminal.getiterator('secedge'):
-            secedges.append((tok, unicode(secedge.get('label')), secedge.get('idref')))
+            secedges.append((tok, unicode(secedge.get('label')),
+                             secedge.get('idref')))
     num_terminals = len(tokens)
     root_id       = (None if skip_vroot else vroot_id)
     # build the list of non-terminals
@@ -254,16 +255,24 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
             tok.edge        = None
             tokens[nonterminal.get('id')] = tok
             for secedge in nonterminal.getiterator('secedge'):
-                secedges.append((tok, unicode(secedge.get('label')), secedge.get('idref')))
+                secedges.append((tok, unicode(secedge.get('label')),
+                                 secedge.get('idref')))
         else:
             for edge in nonterminal.getiterator('edge'):
                 if edge.get('idref') not in terminal_ids:
                     root_id = edge.get('idref')
-    # attach terminals and non-terminals to their parents using the information in <edge> tags
+    # attach terminals and non-terminals to their parents using the
+    # information in <edge> tags
+    attached_ids = set()
     for nonterminal in graph.getiterator('nt'):
         if not (nonterminal.get('id') == vroot_id and skip_vroot):
             tok = tokens[nonterminal.get('id')]
             for edge in nonterminal.getiterator('edge'):
+                # we can't attach the same constituent to two
+                # different parents
+                if edge.get('idref') in attached_ids:
+                    return None
+                attached_ids.add(edge.get('idref'))
                 child = tokens[edge.get('idref')]
                 child.edge = unicode(edge.get('label'))
                 if (isinstance(child, tree_class) and
