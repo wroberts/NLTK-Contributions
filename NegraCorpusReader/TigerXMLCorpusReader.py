@@ -12,7 +12,7 @@ from nltk.corpus.reader.util    import concat
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, XMLCorpusView
 from nltk.tree                  import Tree, ParentedTree
 from nltk.util                  import LazyConcatenation, LazyMap
-from NegraCorpusReader          import Atom, NegraCorpusReader, _get_parsed_words_helper
+from NegraCorpusReader          import Atom
 
 class TigerXMLCorpusReader(XMLCorpusReader):
     '''
@@ -153,11 +153,10 @@ class TigerXMLCorpusReader(XMLCorpusReader):
         @return: Return a tree representation of parsed words from the grid.
         @rtype: L{Tree}
         '''
-        tokens = _sentence_etree_to_tokens(sentence_etree)
-        return _get_parsed_words_helper(tokens,
-                                        Tree,
-                                        lambda l, t, n: t[NegraCorpusReader.WORDS],
-                                        False)
+        return _sentence_etree_to_tree(sentence_etree,
+                                       Tree,
+                                       lambda l, t, p: t.get('word'),
+                                       False)
 
     def _get_parsed_words_morph(self, sentence_etree, secedge_copy = True):
         '''
@@ -170,20 +169,18 @@ class TigerXMLCorpusReader(XMLCorpusReader):
         @return: Return a tree representation of parsed words from the grid.
         @rtype: L{ParentedTree}
         '''
-        tokens = _sentence_etree_to_tokens(sentence_etree)
-        return _get_parsed_words_helper(
-            tokens,
-            ParentedTree,
-            lambda l, t, n: Atom(word=t[NegraCorpusReader.WORDS],
-                                 tag=t.get(NegraCorpusReader.POS, None),
-                                 morph=t.get(NegraCorpusReader.MORPH, None),
-                                 lemma=t.get(NegraCorpusReader.LEMMA, None),
-                                 edge=t.get(NegraCorpusReader.EDGE, None),
-                                 secedge=t.get(NegraCorpusReader.SECEDGE, None),
-                                 comment=t.get(NegraCorpusReader.COMMENT, None),
-                                 grid_lineno=l,
-                                 parent=n),
-            secedge_copy)
+        return _sentence_etree_to_tree(sentence_etree,
+                                       ParentedTree,
+                                       lambda l, t, p: Atom(word=t.get('word'),
+                                                            tag=t.get('pos', None),
+                                                            morph=t.get('morph', None),
+                                                            lemma=t.get('lemma', None),
+                                                            edge=None,
+                                                            secedge=None,
+                                                            comment=None,
+                                                            grid_lineno=l,
+                                                            parent=p),
+                                       secedge_copy)
 
     def _get_tagged_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
@@ -194,113 +191,97 @@ class TigerXMLCorpusReader(XMLCorpusReader):
         graph = sentence_etree.find('graph')
         return [terminal.get('word') for terminal in graph.getiterator("t")]
 
-XML_ATTR_TO_NEGRA_COL_NAME_MAP = {
-    'word':   NegraCorpusReader.WORDS,
-    'lemma':  NegraCorpusReader.LEMMA,
-    'pos':    NegraCorpusReader.POS,
-    'morph':  NegraCorpusReader.MORPH,
-    #'case':   NegraCorpusReader.CASE,
-    #'number': NegraCorpusReader.NUMBER,
-    #'gender': NegraCorpusReader.GENDER,
-    #'person': NegraCorpusReader.PERSON,
-    #'degree': NegraCorpusReader.DEGREE,
-    #'tense':  NegraCorpusReader.TENSE,
-    #'mood':   NegraCorpusReader.MOOD,
-    }
+def _copy_subtree_helper(subtree, label, parent_idref, tokens, terminal_etrees,
+                         tree_class, atom_builder):
+    subtree_copy             = tree_class(subtree.node, [])
+    subtree_copy.grid_lineno = subtree.grid_lineno
+    subtree_copy.edge        = label
+    todo = []
+    for child in subtree:
+        todo.append((subtree_copy, child))
+    while todo:
+        (subtree_parent, current) = todo.pop(0)
+        if isinstance(current, tree_class):
+            current_copy             = tree_class(current.node, [])
+            current_copy.grid_lineno = current.grid_lineno
+            current_copy.edge        = current.edge
+            for child in current:
+                todo.append((current_copy, child))
+        else:
+            current_copy = atom_builder(subtree_parent.grid_lineno,
+                                        terminal_etrees[subtree_parent.grid_lineno],
+                                        subtree_parent)
+            if subtree_parent is subtree_copy:
+                if isinstance(current_copy, Atom):
+                    current_copy.edge = label
+        subtree_parent.append(current_copy)
+    tokens[parent_idref].append(subtree_copy)
 
-def _rewrite_dict_keys(dict_items, key_name_map):
-    '''
-    Helper function to rename the keys of a dictionary.
-    '''
-    return ((key_name_map.get(k, k), v) for (k, v) in dict_items)
-
-def _tiger_idref_to_word(idref):
-    '''
-    Converts a TIGER-XML idref into a numeric word.  idref is a token
-    like s282_5, made up of the sentence ID, an underscore and the
-    numberic word.  VROOT is the only non-numeric idref in any TIGER
-    graph and is renumbered by this method to 0.  The words returned
-    by this method have a # character prefix.
-    '''
-    idref = idref.split('_')[1]
-    if not idref.isdigit():
-        return '#0'
-    return '#' + idref
-
-def _make_empty_negra_token():
-    '''
-    Makes an empty token structure for processing with the
-    NegraCorpusReader.
-    '''
-    return {
-        NegraCorpusReader.WORDS:   None,
-        NegraCorpusReader.LEMMA:   '--',
-        NegraCorpusReader.POS:     None,
-        NegraCorpusReader.MORPH:   '--',
-        NegraCorpusReader.EDGE:    None,
-        NegraCorpusReader.PARENT:  '0',
-        NegraCorpusReader.SECEDGE: None,
-        NegraCorpusReader.COMMENT: '0',
-            }
-
-def _sentence_etree_to_tokens(sentence_etree):
+def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
+                            secedge_copy = True):
     '''
     Helper function to transform an ElementTree element read from the
-    TIGER XML corpus into the format used by the NegraCorpusReader.
+    TIGER XML corpus into an NLTK tree.
     '''
+    graph           = sentence_etree.find('graph')
+    vroot_id        = graph.get('root')
+    skip_vroot      = ((vroot_id.split('_')[1].lower() == 'vroot') and
+                       len(list(graph.getiterator('nt'))) > 1)
+    tokens          = {}
+    secedges        = []
+    terminal_etrees = {}
     # build the list of terminals
-    graph        = sentence_etree.find('graph')
-    vroot_id     = graph.get('root')
-    skip_vroot   = (_tiger_idref_to_word(vroot_id) == '#0')
-    id_to_tokens = {}
-    tokens       = []
     for idx, terminal in enumerate(graph.getiterator('t')):
-        tok = _make_empty_negra_token()
-        tok.update(_rewrite_dict_keys(terminal.items(),
-                                      XML_ATTR_TO_NEGRA_COL_NAME_MAP))
+        tok = tree_class(unicode(terminal.get('pos')), [])
+        tok.grid_lineno = idx
+        atom = atom_builder(idx, terminal, tok)
+        tok.append(atom)
+        tokens[terminal.get('id')] = tok
+        terminal_etrees[idx] = terminal
         for secedge in terminal.getiterator('secedge'):
-            tok[NegraCorpusReader.SECEDGE] = secedge.get('label')
-            tok[NegraCorpusReader.COMMENT] = _tiger_idref_to_word(
-                secedge.get('idref'))[1:]
-        tokens.append(tok)
-        id_to_tokens[terminal.get('id')] = (idx, tok)
-    # build the list of non-terminals
+            secedges.append((tok, unicode(secedge.get('label')), secedge.get('idref')))
     num_terminals    = len(tokens)
     non_terminal_ids = set()
+    root_id          = (None if skip_vroot else vroot_id)
+    # build the list of non-terminals
     for idx, nonterminal in enumerate(graph.getiterator('nt')):
         idx += num_terminals
-        if nonterminal.get('id') == vroot_id and skip_vroot:
-            continue
-        tok = _make_empty_negra_token()
-        tok[NegraCorpusReader.WORDS] = _tiger_idref_to_word(
-            nonterminal.get('id'))
-        tok[NegraCorpusReader.POS]   = nonterminal.get('cat')
-        for secedge in nonterminal.getiterator('secedge'):
-            tok[NegraCorpusReader.SECEDGE] = secedge.get('label')
-            tok[NegraCorpusReader.COMMENT] = _tiger_idref_to_word(
-                secedge.get('idref'))[1:]
-        tokens.append(tok)
-        id_to_tokens[nonterminal.get('id')] = (idx, tok)
-        non_terminal_ids.add(nonterminal.get('id'))
-    # connect terminals and non-terminals to their parents using
-    # <edge> tags; also keep a lookout for the non-terminal which is
-    # child to the VROOT element.
-    root_idx = -1
+        if not (nonterminal.get('id') == vroot_id and skip_vroot):
+            tok = tree_class(unicode(nonterminal.get('cat')), [])
+            tok.grid_lineno = idx
+            tokens[nonterminal.get('id')] = tok
+            non_terminal_ids.add(nonterminal.get('id'))
+            for secedge in nonterminal.getiterator('secedge'):
+                secedges.append((tok, unicode(secedge.get('label')), secedge.get('idref')))
+        else:
+            for edge in nonterminal.getiterator('edge'):
+                if edge.get('idref') in non_terminal_ids:
+                    root_id = edge.get('idref')
+    # attach terminals and non-terminals to their parents using the information in <edge> tags
     for nonterminal in graph.getiterator('nt'):
-        is_vroot = (nonterminal.get('id') == vroot_id)
-        parent_word = _tiger_idref_to_word(nonterminal.get('id'))[1:]
-        for edge in nonterminal.getiterator('edge'):
-            tok = id_to_tokens[edge.get('idref')][1]
-            tok[NegraCorpusReader.PARENT] = parent_word
-            tok[NegraCorpusReader.EDGE]   = edge.get('label')
-            if is_vroot:
-                if skip_vroot:
-                    if edge.get('idref') in non_terminal_ids:
-                        root_idx = id_to_tokens[edge.get('idref')][0]
-                else:
-                    root_idx = id_to_tokens[nonterminal.get('id')][0]
-    # move the root nonterminal to the end of the tokens list if needed
-    if root_idx != -1 and root_idx != len(tokens) - 1:
-        tokens[len(tokens) - 1], tokens[root_idx] = (tokens[root_idx],
-                                                     tokens[len(tokens) - 1])
-    return tokens
+        if not (nonterminal.get('id') == vroot_id and skip_vroot):
+            tok = tokens[nonterminal.get('id')]
+            for edge in nonterminal.getiterator('edge'):
+                child = tokens[edge.get('idref')]
+                child.edge = unicode(edge.get('label'))
+                if (isinstance(child, tree_class) and
+                    len(child) == 1 and
+                    isinstance(child[0], Atom)):
+                    child[0].edge = unicode(edge.get('label'))
+                tok.append(child)
+        else:
+            for edge in nonterminal.getiterator('edge'):
+                if edge.get('idref') != root_id:
+                    child = tokens[edge.get('idref')]
+                    child.edge = unicode(edge.get('label'))
+                    if (isinstance(child, tree_class) and
+                        len(child) == 1 and
+                        isinstance(child[0], Atom)):
+                        child[0].edge = unicode(edge.get('label'))
+                    tokens[root_id].append(child)
+    # process secedges
+    if secedge_copy:
+        for (subtree, label, parent_idref) in secedges:
+            _copy_subtree_helper(subtree, label, parent_idref, tokens,
+                                 terminal_etrees, tree_class, atom_builder)
+    return tokens[root_id]
