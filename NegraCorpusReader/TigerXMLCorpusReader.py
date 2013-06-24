@@ -136,12 +136,12 @@ class TigerXMLCorpusReader(XMLCorpusReader):
 
     def _get_lemmatised_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
-        return [(terminal.get('word'), terminal.get('lemma')) for
+        return [(unicode(terminal.get('word')), unicode(terminal.get('lemma'))) for
                 terminal in graph.getiterator("t")]
 
     def _get_morphological_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
-        return [(terminal.get('word'), terminal.get('morph')) for
+        return [(unicode(terminal.get('word')), unicode(terminal.get('morph'))) for
                 terminal in graph.getiterator("t")]
 
     def _get_parsed_words(self, sentence_etree):
@@ -155,7 +155,7 @@ class TigerXMLCorpusReader(XMLCorpusReader):
         '''
         return _sentence_etree_to_tree(sentence_etree,
                                        Tree,
-                                       lambda l, t, p: t.get('word'),
+                                       lambda l, t, p: unicode(t.get('word')),
                                        False)
 
     def _get_parsed_words_morph(self, sentence_etree, secedge_copy = True):
@@ -171,10 +171,10 @@ class TigerXMLCorpusReader(XMLCorpusReader):
         '''
         return _sentence_etree_to_tree(sentence_etree,
                                        ParentedTree,
-                                       lambda l, t, p: Atom(word=t.get('word'),
-                                                            tag=t.get('pos', None),
-                                                            morph=t.get('morph', None),
-                                                            lemma=t.get('lemma', None),
+                                       lambda l, t, p: Atom(word=unicode(t.get('word')),
+                                                            tag=unicode(t.get('pos', None)),
+                                                            morph=unicode(t.get('morph', None)),
+                                                            lemma=unicode(t.get('lemma', None)),
                                                             edge=None,
                                                             secedge=None,
                                                             comment=None,
@@ -184,12 +184,12 @@ class TigerXMLCorpusReader(XMLCorpusReader):
 
     def _get_tagged_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
-        return [(terminal.get('word'), terminal.get('pos')) for
+        return [(unicode(terminal.get('word')), unicode(terminal.get('pos'))) for
                 terminal in graph.getiterator("t")]
 
     def _get_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
-        return [terminal.get('word') for terminal in graph.getiterator("t")]
+        return [unicode(terminal.get('word')) for terminal in graph.getiterator("t")]
 
 def _copy_subtree_helper(subtree, label, parent_idref, tokens, terminal_etrees,
                          tree_class, atom_builder):
