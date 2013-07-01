@@ -293,6 +293,7 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
     # process secedges
     if secedge_copy:
         for (subtree, label, parent_idref) in secedges:
-            _copy_subtree_helper(subtree, label, parent_idref, tokens,
-                                 terminal_etrees, tree_class, atom_builder)
+            if parent_idref not in terminal_ids:
+                _copy_subtree_helper(subtree, label, parent_idref, tokens,
+                                     terminal_etrees, tree_class, atom_builder)
     return tokens[root_id]
