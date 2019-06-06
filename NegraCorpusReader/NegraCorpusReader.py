@@ -53,7 +53,7 @@ class Atom(object):
     def __str__(self):
         return str(self.word)
     def __unicode__(self):
-        return unicode(self.word)
+        return str(self.word)
     def __repr__(self):
         return repr(self.word)
     def __len__(self):
@@ -247,7 +247,7 @@ class NegraCorpusReader(ConllCorpusReader):
         last_idx = list(itertools.takewhile(
                 lambda x: (words[-x - 1].startswith('#') and
                            words[-x - 1][1:].isdigit()),
-                range(len(words))))
+                list(range(len(words)))))
         if last_idx:
             last_idx = last_idx[-1]
             return words[:-last_idx - 1]
@@ -260,8 +260,8 @@ class NegraCorpusReader(ConllCorpusReader):
         @rtype: C{list} of C{(word, morph)}
         """
 
-        return zip(self._get_column(grid, self._colmap[self.WORDS]),
-                   self._get_column(grid, self._colmap[self.MORPH]))
+        return list(zip(self._get_column(grid, self._colmap[self.WORDS]),
+                   self._get_column(grid, self._colmap[self.MORPH])))
 
     def _get_lemmatised_words(self, grid):
         """Retrieve the words and their corresponding lemma.
@@ -269,8 +269,8 @@ class NegraCorpusReader(ConllCorpusReader):
         @rtype: C{list} of C{(word, lemma)}
         """
 
-        return zip(self._get_column(grid, self._colmap[self.WORDS]),
-                   self._get_column(grid, self._colmap[self.LEMMA]))
+        return list(zip(self._get_column(grid, self._colmap[self.WORDS]),
+                   self._get_column(grid, self._colmap[self.LEMMA])))
 
     def _get_parsed_words(self, grid):
         """
@@ -284,11 +284,11 @@ class NegraCorpusReader(ConllCorpusReader):
 
         # Get the needed columns. The parent column is crucial and contains the
         # token's parent node.
-        tokens = map(dict, zip(
+        tokens = list(map(dict, list(zip(
             [(self.WORDS, x) for x in self._get_column(grid, self._colmap[self.WORDS], filter=False)],
             [(self.POS, x) for x in self._get_column(grid, self._colmap[self.POS], filter=False)],
             [(self.PARENT, x) for x in self._get_column(grid, self._colmap[self.PARENT], filter=False)]
-        ))
+        ))))
 
         return _get_parsed_words_helper(tokens,
                                         Tree,
@@ -309,12 +309,12 @@ class NegraCorpusReader(ConllCorpusReader):
 
         # Get the needed columns. The parent column is crucial and contains the
         # token's parent node.
-        tokens = map(dict, zip(
+        tokens = list(map(dict, list(zip(
             [(self.WORDS, x) for x in self._get_column(grid, self._colmap[self.WORDS], filter=False)],
             [(self.POS, x) for x in self._get_column(grid, self._colmap[self.POS], filter=False)],
             [(self.PARENT, x) for x in self._get_column(grid, self._colmap[self.PARENT], filter=False)],
             [(self.MORPH, x) for x in self._get_column(grid, self._colmap[self.MORPH], filter=False)]
-            ))
+            ))))
         for column_name in [self.LEMMA, self.EDGE, self.SECEDGE, self.COMMENT]:
             if column_name in self._colmap:
                 for token, column_value in zip(tokens, self._get_column(grid, self._colmap[column_name], filter=False)):

@@ -12,7 +12,7 @@ from nltk.corpus.reader.util    import concat
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, XMLCorpusView
 from nltk.tree                  import Tree, ParentedTree
 from nltk.util                  import LazyConcatenation, LazyMap
-from NegraCorpusReader          import Atom
+from .NegraCorpusReader         import Atom
 
 class TigerXMLCorpusReader(XMLCorpusReader):
     '''
