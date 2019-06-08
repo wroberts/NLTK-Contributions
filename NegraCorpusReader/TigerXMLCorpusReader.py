@@ -27,7 +27,7 @@ class TigerXMLCorpusReader(XMLCorpusReader):
         - `root`: the base directory for the TIGER corpus
         - `fileids`: the XML filename of the TIGER corpus
         '''
-        super(TigerXMLCorpusReader, self).__init__(root, fileids)
+        super().__init__(root, fileids)
 
     #==========================================================================
     # Data access methods
@@ -136,12 +136,12 @@ class TigerXMLCorpusReader(XMLCorpusReader):
 
     def _get_lemmatised_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
-        return [(unicode(terminal.get('word')), unicode(terminal.get('lemma'))) for
+        return [(str(terminal.get('word')), str(terminal.get('lemma'))) for
                 terminal in graph.getiterator("t")]
 
     def _get_morphological_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
-        return [(unicode(terminal.get('word')), unicode(terminal.get('morph'))) for
+        return [(str(terminal.get('word')), str(terminal.get('morph'))) for
                 terminal in graph.getiterator("t")]
 
     def _get_parsed_words(self, sentence_etree):
@@ -155,7 +155,7 @@ class TigerXMLCorpusReader(XMLCorpusReader):
         '''
         return _sentence_etree_to_tree(sentence_etree,
                                        Tree,
-                                       lambda l, t, p: unicode(t.get('word')),
+                                       lambda l, t, p: str(t.get('word')),
                                        False)
 
     def _get_parsed_words_morph(self, sentence_etree, secedge_copy = True):
@@ -171,10 +171,10 @@ class TigerXMLCorpusReader(XMLCorpusReader):
         '''
         return _sentence_etree_to_tree(sentence_etree,
                                        ParentedTree,
-                                       lambda l, t, p: Atom(word=unicode(t.get('word')),
-                                                            tag=unicode(t.get('pos', None)),
-                                                            morph=unicode(t.get('morph', None)),
-                                                            lemma=unicode(t.get('lemma', None)),
+                                       lambda l, t, p: Atom(word=str(t.get('word')),
+                                                            tag=str(t.get('pos', None)),
+                                                            morph=str(t.get('morph', None)),
+                                                            lemma=str(t.get('lemma', None)),
                                                             edge=None,
                                                             secedge=None,
                                                             comment=None,
@@ -184,12 +184,12 @@ class TigerXMLCorpusReader(XMLCorpusReader):
 
     def _get_tagged_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
-        return [(unicode(terminal.get('word')), unicode(terminal.get('pos'))) for
+        return [(str(terminal.get('word')), str(terminal.get('pos'))) for
                 terminal in graph.getiterator("t")]
 
     def _get_words(self, sentence_etree):
         graph = sentence_etree.find('graph')
-        return [unicode(terminal.get('word')) for terminal in graph.getiterator("t")]
+        return [str(terminal.get('word')) for terminal in graph.getiterator("t")]
 
 def _copy_subtree_helper(subtree, label, parent_idref, tokens, terminal_etrees,
                          tree_class, atom_builder):
@@ -233,7 +233,7 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
     terminal_ids    = set()
     # build the list of terminals
     for idx, terminal in enumerate(graph.getiterator('t')):
-        tok = tree_class(unicode(terminal.get('pos')), [])
+        tok = tree_class(str(terminal.get('pos')), [])
         tok.grid_lineno = idx
         tok.edge        = None
         atom = atom_builder(idx, terminal, tok)
@@ -242,7 +242,7 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
         terminal_ids.add(terminal.get('id'))
         terminal_etrees[idx] = terminal
         for secedge in terminal.getiterator('secedge'):
-            secedges.append((tok, unicode(secedge.get('label')),
+            secedges.append((tok, str(secedge.get('label')),
                              secedge.get('idref')))
     num_terminals = len(tokens)
     root_id       = (None if skip_vroot else vroot_id)
@@ -250,12 +250,12 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
     for idx, nonterminal in enumerate(graph.getiterator('nt')):
         idx += num_terminals
         if not (nonterminal.get('id') == vroot_id and skip_vroot):
-            tok = tree_class(unicode(nonterminal.get('cat')), [])
+            tok = tree_class(str(nonterminal.get('cat')), [])
             tok.grid_lineno = idx
             tok.edge        = None
             tokens[nonterminal.get('id')] = tok
             for secedge in nonterminal.getiterator('secedge'):
-                secedges.append((tok, unicode(secedge.get('label')),
+                secedges.append((tok, str(secedge.get('label')),
                                  secedge.get('idref')))
         else:
             for edge in nonterminal.getiterator('edge'):
@@ -274,21 +274,21 @@ def _sentence_etree_to_tree(sentence_etree, tree_class, atom_builder,
                     return None
                 attached_ids.add(edge.get('idref'))
                 child = tokens[edge.get('idref')]
-                child.edge = unicode(edge.get('label'))
+                child.edge = str(edge.get('label'))
                 if (isinstance(child, tree_class) and
                     len(child) == 1 and
                     isinstance(child[0], Atom)):
-                    child[0].edge = unicode(edge.get('label'))
+                    child[0].edge = str(edge.get('label'))
                 tok.append(child)
         else:
             for edge in nonterminal.getiterator('edge'):
                 if edge.get('idref') != root_id:
                     child = tokens[edge.get('idref')]
-                    child.edge = unicode(edge.get('label'))
+                    child.edge = str(edge.get('label'))
                     if (isinstance(child, tree_class) and
                         len(child) == 1 and
                         isinstance(child[0], Atom)):
-                        child[0].edge = unicode(edge.get('label'))
+                        child[0].edge = str(edge.get('label'))
                     tokens[root_id].append(child)
     # process secedges
     if secedge_copy:
