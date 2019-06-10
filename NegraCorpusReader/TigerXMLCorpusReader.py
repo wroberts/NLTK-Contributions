@@ -193,7 +193,7 @@ class TigerXMLCorpusReader(XMLCorpusReader):
 
 def _copy_subtree_helper(subtree, label, parent_idref, tokens, terminal_etrees,
                          tree_class, atom_builder):
-    subtree_copy             = tree_class(subtree.node, [])
+    subtree_copy             = tree_class(subtree.label(), [])
     subtree_copy.grid_lineno = subtree.grid_lineno
     subtree_copy.edge        = label
     todo = []
@@ -202,7 +202,7 @@ def _copy_subtree_helper(subtree, label, parent_idref, tokens, terminal_etrees,
     while todo:
         (subtree_parent, current) = todo.pop(0)
         if isinstance(current, tree_class):
-            current_copy             = tree_class(current.node, [])
+            current_copy             = tree_class(current.label(), [])
             current_copy.grid_lineno = current.grid_lineno
             current_copy.edge        = current.edge
             for child in current:
